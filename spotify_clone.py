@@ -1,13 +1,3 @@
-"""
-SPOTIFY CLONE  (free music from Apple's iTunes Search API - no key, no account)
-
-Run:   python spotify_clone.py
-Open:  the address it prints (it opens your browser automatically)
-
-Every song plays a free 30 second preview straight from Apple.
-Liked songs, playlists and followed artists are saved in your browser.
-"""
-
 import sys
 import time
 import argparse
@@ -39,12 +29,6 @@ CACHE_SECONDS = 300
 api_cache = {}
 image_cache = {}
 VERBOSE = False
-
-
-# ----------------------------------------------------------------------
-#  hosts file (so you can open http://spotify.local) - optional
-# ----------------------------------------------------------------------
-
 def get_hosts_file_path():
     if sys.platform.startswith("win"):
         return r"C:\Windows\System32\drivers\etc\hosts"
@@ -72,12 +56,6 @@ def setup_hosts_file():
         return True
     except Exception:
         return False
-
-
-# ----------------------------------------------------------------------
-#  downloading + caching
-# ----------------------------------------------------------------------
-
 def download(url):
     headers = {"User-Agent": "Mozilla/5.0", "Accept": "*/*"}
     request = urllib.request.Request(url, headers=headers)
@@ -135,12 +113,6 @@ def get_picture(url):
     result = {"data": data, "kind": kind}
     image_cache[url] = result
     return result
-
-
-# ----------------------------------------------------------------------
-#  the web server
-# ----------------------------------------------------------------------
-
 class MyHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         if VERBOSE:
@@ -307,11 +279,6 @@ def main():
 
 
 FAVICON = r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#1ed760"/><path d="M18 7v11.2a3.6 3.6 0 1 0 2 3.2V11h4V7z" fill="#000"/></svg>"""
-
-
-# ----------------------------------------------------------------------
-#  PAGE: CSS
-# ----------------------------------------------------------------------
 
 PAGE_CSS = r"""
 :root {
@@ -2280,12 +2247,6 @@ kbd {
   }
 }
 """
-
-
-# ----------------------------------------------------------------------
-#  PAGE: HTML
-# ----------------------------------------------------------------------
-
 PAGE_HTML = r"""
 <!DOCTYPE html>
 <html lang="en">
@@ -2374,12 +2335,6 @@ PAGE_HTML = r"""
 </body>
 </html>
 """
-
-
-# ----------------------------------------------------------------------
-#  PAGE: JAVASCRIPT (runs in your browser)
-# ----------------------------------------------------------------------
-
 PAGE_JS = r"""
 "use strict";
 
@@ -2658,8 +2613,6 @@ function addRecent(track) {
   saveData("last", track);
 }
 
-/* ---------------- building blocks ---------------- */
-
 function artistLink(t) {
   if (!t.artistId) return esc(t.artist);
   return '<a href="#/artist/' + t.artistId + '">' + esc(t.artist) + "</a>";
@@ -2797,7 +2750,7 @@ function refreshHearts() {
   updateNowHeart();
 }
 
-/* ---------------- menus and popups ---------------- */
+
 
 function closeMenu() { $("#menu").style.display = "none"; }
 function openMenu(x, y, items) {
@@ -2870,7 +2823,7 @@ function showPickPlaylist(track) {
   pendingTrack = track;
 }
 
-/* ---------------- pages ---------------- */
+
 
 function greeting() {
   const hour = new Date().getHours();
@@ -3201,7 +3154,7 @@ function updateTopbar() {
   $("#topbar").style.setProperty("--a", Math.min($("#main").scrollTop / 200, 1));
 }
 
-/* ---------------- the player ---------------- */
+
 
 const audio = $("#audio");
 function currentTrack() { return state.queue[state.index] || null; }
@@ -3426,7 +3379,7 @@ function toggleMute() {
   updateVolumeIcon();
 }
 
-/* ---------------- clicks and keys ---------------- */
+
 
 function handleAction(el) {
   const act = el.dataset.act;
@@ -3605,13 +3558,6 @@ if ("mediaSession" in navigator) {
   } catch (e) {}
 }
 
-/* =====================================================================
-   EXTRA FEATURES
-   Everything below sits on top of the core player: settings, library and
-   stats pages, a sleep timer, search history, "made for you" shelves,
-   extra keyboard shortcuts, library import / export, song info, playlist
-   re-ordering, and a few small conveniences.
-   ===================================================================== */
 
 Object.assign(ICONS, {
   moon: "M12 3a9 9 0 109 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 01-4.4 2.26 5.403 5.403 0 01-3.14-9.8c-.44-.06-.9-.1-1.36-.1z",
@@ -3658,10 +3604,6 @@ function setCountry(code) {
   router();
 }
 
-/* ---------------------------------------------------------------------
-   Settings window
-   --------------------------------------------------------------------- */
-
 function openSettings() {
   let options = "";
   COUNTRIES.forEach(c => {
@@ -3698,9 +3640,7 @@ function openSettings() {
   });
 }
 
-/* ---------------------------------------------------------------------
-   Export / import / clear
-   --------------------------------------------------------------------- */
+
 
 function exportLibrary() {
   const data = {
@@ -3790,10 +3730,6 @@ function clearAllData() {
   router();
 }
 
-/* ---------------------------------------------------------------------
-   Sleep timer
-   --------------------------------------------------------------------- */
-
 const sleep = { timer: null, endsAt: 0, endOfTrack: false };
 
 function sleepActive() {
@@ -3861,10 +3797,6 @@ function openSleepModal() {
   showModal(h);
 }
 
-/* ---------------------------------------------------------------------
-   Keyboard shortcuts window and extra keys
-   --------------------------------------------------------------------- */
-
 function showShortcuts() {
   const rows = [
     ["Space", "Play or pause"],
@@ -3906,9 +3838,7 @@ document.addEventListener("keydown", event => {
   else if (event.key === "l") toggleLike(currentTrack());
 });
 
-/* ---------------------------------------------------------------------
-   Profile menu (the round icon, top right)
-   --------------------------------------------------------------------- */
+
 
 function openProfileMenu(el) {
   const box = el.getBoundingClientRect();
@@ -3922,9 +3852,6 @@ function openProfileMenu(el) {
   ]);
 }
 
-/* ---------------------------------------------------------------------
-   Search history
-   --------------------------------------------------------------------- */
 
 function rememberSearch(term) {
   const clean = String(term || "").trim();
@@ -3950,9 +3877,6 @@ $("#search-input").addEventListener("keydown", event => {
   if (event.key === "Enter") rememberSearch(event.target.value);
 });
 
-/* ---------------------------------------------------------------------
-   Track menu extras: song info and playlist re-ordering
-   --------------------------------------------------------------------- */
 
 function addExtraMenuItems(items, track) {
   if (location.hash.indexOf("#/mine/") === 0) {
@@ -3994,11 +3918,7 @@ function showSongInfo(track) {
   showModal(h);
 }
 
-/* ---------------------------------------------------------------------
-   "Made for you" shelves on the home page
-   Looks at the artists you like and play most, then adds a shelf with
-   more songs from them. It loads after the page so Home stays fast.
-   --------------------------------------------------------------------- */
+
 
 async function loadMadeForYou(token) {
   const pool = state.liked.concat(state.recent);
@@ -4035,10 +3955,6 @@ async function loadMadeForYou(token) {
   footer.parentNode.insertBefore(holder, footer);
 }
 
-/* ---------------------------------------------------------------------
-   Library page (also the way to reach your library on small screens)
-   --------------------------------------------------------------------- */
-
 async function viewLibrary() {
   let h = '<div class="page-title">Your Library</div>';
   h += '<div class="page-sub">Everything you have saved in this browser.</div>';
@@ -4066,9 +3982,6 @@ async function viewLibrary() {
   return { html: h + footerNote(), tracks: [], color: "#1f1f1f" };
 }
 
-/* ---------------------------------------------------------------------
-   Stats page
-   --------------------------------------------------------------------- */
 
 async function viewStats() {
   const seen = {};
@@ -4172,10 +4085,6 @@ function handleExtraAction(act, el) {
       return false;
   }
 }
-
-/* ---------------------------------------------------------------------
-   Small conveniences
-   --------------------------------------------------------------------- */
 
 window.addEventListener("offline", () => toast("You are offline"));
 window.addEventListener("online", () => toast("Back online"));
