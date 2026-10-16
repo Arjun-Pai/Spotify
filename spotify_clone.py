@@ -1,77 +1,37 @@
 import sys
 import time
-import argparse
 import json
+import socket
 import threading
 import webbrowser
-import ssl
 import urllib.request
 import urllib.parse
 import urllib.error
 from http.server import BaseHTTPRequestHandler
-try:
-    from http.server import ThreadingHTTPServer
-except ImportError:  # very old Python
-    from http.server import HTTPServer
-    from socketserver import ThreadingMixIn
-
-    class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
-        daemon_threads = True
+from http.server import ThreadingHTTPServer
 
 
-SITE_NAME = "spotify.local"
-FIRST_PORT = 80
-BACKUP_PORT = 8080
+PORT = 8080
 ITUNES_URL = "https://itunes.apple.com"
 RSS_URL = "https://rss.applemarketingtools.com"
-CACHE_SECONDS = 300
+SEARCH_CACHE_SECONDS = 900
+CHART_CACHE_SECONDS = 3600
+PICTURE_DOMAINS = ["mzstatic.com", "apple.com"]
 
 api_cache = {}
 image_cache = {}
-VERBOSE = False
-def get_hosts_file_path():
-    if sys.platform.startswith("win"):
-        return r"C:\Windows\System32\drivers\etc\hosts"
-    return "/etc/hosts"
 
 
-def setup_hosts_file():
-    path = get_hosts_file_path()
-    try:
-        with open(path, "r") as f:
-            text = f.read()
-    except Exception:
-        return False
-
-    for line in text.split("\n"):
-        line = line.strip()
-        if not line.startswith("#") and SITE_NAME in line:
-            return True
-
-    try:
-        with open(path, "a") as f:
-            f.write("\n127.0.0.1 " + SITE_NAME + "\n")
-            f.write("::1 " + SITE_NAME + "\n")
-        print("  Added " + SITE_NAME + " to your hosts file.")
-        return True
-    except Exception:
-        return False
 def download(url):
     headers = {"User-Agent": "Mozilla/5.0", "Accept": "*/*"}
     request = urllib.request.Request(url, headers=headers)
     last_error = None
     for attempt in range(2):
         try:
-            try:
-                return urllib.request.urlopen(request, timeout=15)
-            except urllib.error.URLError as error:
-                if "CERTIFICATE" in str(error).upper():
-                    context = ssl._create_unverified_context()
-                    return urllib.request.urlopen(request, timeout=15, context=context)
-                raise
+            return urllib.request.urlopen(request, timeout=15)
         except urllib.error.HTTPError as error:
             last_error = error
-            if error.code in (403, 429, 503):
+            if error.code in [403, 429, 503]:
                 time.sleep(1.2)
             else:
                 break
@@ -81,42 +41,58 @@ def download(url):
     raise last_error
 
 
+def get_cache_seconds(url):
+    if url.startswith(RSS_URL):
+        return CHART_CACHE_SECONDS
+    return SEARCH_CACHE_SECONDS
+
+
 def get_cached(url):
     now = time.time()
     saved = api_cache.get(url)
-    if saved and now - saved["time"] < CACHE_SECONDS:
-        return saved["data"]
-
+    if saved is not None:
+        age = now - saved["time"]
+        if age < get_cache_seconds(url):
+            return saved["data"]
     if len(api_cache) > 600:
         api_cache.clear()
-
     data = download(url).read()
     api_cache[url] = {"time": now, "data": data}
     return data
 
 
-def get_picture(url):
-    host = urllib.parse.urlparse(url).hostname
-    if host is None:
-        return None
-    if not (host.endswith("mzstatic.com") or host.endswith("apple.com")):
-        return None
+def host_is_allowed(host):
+    for domain in PICTURE_DOMAINS:
+        if host == domain:
+            return True
+        if host.endswith("." + domain):
+            return True
+    return False
 
+
+def get_picture(url):
+    parts = urllib.parse.urlparse(url)
+    if parts.scheme != "https":
+        return None
+    if parts.hostname is None:
+        return None
+    if not host_is_allowed(parts.hostname.lower()):
+        return None
     if url in image_cache:
         return image_cache[url]
     if len(image_cache) > 300:
         image_cache.clear()
-
     answer = download(url)
     data = answer.read()
     kind = answer.headers.get("Content-Type", "image/jpeg")
     result = {"data": data, "kind": kind}
     image_cache[url] = result
     return result
+
+
 class MyHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        if VERBOSE:
-            print("  " + (format % args))
+        pass
 
     def send_answer(self, code, kind, body, cache="no-store"):
         try:
@@ -129,7 +105,7 @@ class MyHandler(BaseHTTPRequestHandler):
         except Exception:
             pass
 
-    def proxy_json(self, base, rest, label):
+    def send_json_from_apple(self, base, rest, label):
         try:
             data = get_cached(base + rest)
             self.send_answer(200, "application/json; charset=utf-8", data)
@@ -138,9 +114,25 @@ class MyHandler(BaseHTTPRequestHandler):
             message = json.dumps({"error": "Could not reach " + label + ": " + str(error)})
             self.send_answer(502, "application/json", message.encode("utf-8"))
 
+    def send_picture(self, path):
+        query = urllib.parse.urlparse(path).query
+        options = urllib.parse.parse_qs(query)
+        if "u" not in options:
+            self.send_answer(400, "text/plain", b"missing picture address")
+            return
+        try:
+            picture = get_picture(options["u"][0])
+        except Exception as error:
+            print("  Picture problem: " + str(error))
+            self.send_answer(502, "text/plain", b"picture failed")
+            return
+        if picture is None:
+            self.send_answer(403, "text/plain", b"not allowed")
+        else:
+            self.send_answer(200, picture["kind"], picture["data"], "max-age=86400")
+
     def do_GET(self):
         path = self.path
-
         if path == "/" or path.startswith("/?"):
             self.send_answer(200, "text/html; charset=utf-8", PAGE_HTML.encode("utf-8"))
         elif path == "/style.css":
@@ -150,36 +142,41 @@ class MyHandler(BaseHTTPRequestHandler):
         elif path == "/favicon.svg" or path == "/favicon.ico":
             self.send_answer(200, "image/svg+xml", FAVICON.encode("utf-8"))
         elif path.startswith("/itunes/"):
-            self.proxy_json(ITUNES_URL, path[len("/itunes"):], "Apple iTunes")
+            rest = path[len("/itunes"):]
+            self.send_json_from_apple(ITUNES_URL, rest, "Apple iTunes")
         elif path.startswith("/rss/"):
-            self.proxy_json(RSS_URL, path[len("/rss"):], "Apple charts")
+            rest = path[len("/rss"):]
+            self.send_json_from_apple(RSS_URL, rest, "Apple charts")
         elif path.startswith("/img?"):
-            options = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
-            if "u" not in options:
-                self.send_answer(400, "text/plain", b"missing picture address")
-                return
-            try:
-                picture = get_picture(options["u"][0])
-                if picture is None:
-                    self.send_answer(403, "text/plain", b"not allowed")
-                else:
-                    self.send_answer(200, picture["kind"], picture["data"], "max-age=86400")
-            except Exception as error:
-                print("  Picture problem: " + str(error))
-                self.send_answer(502, "text/plain", b"picture failed")
+            self.send_picture(path)
         else:
             self.send_answer(404, "text/plain", b"Not found")
 
 
-def make_server(ports=None):
-    for port in (ports or (FIRST_PORT, BACKUP_PORT)):
-        try:
-            server = ThreadingHTTPServer(("127.0.0.1", port), MyHandler)
-            server.daemon_threads = True
-            return server, port
-        except Exception:
-            continue
-    return None, 0
+class DualStackServer(ThreadingHTTPServer):
+    address_family = socket.AF_INET6
+
+    def server_bind(self):
+        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        ThreadingHTTPServer.server_bind(self)
+
+
+def make_public_server():
+    try:
+        return DualStackServer(("::", PORT), MyHandler)
+    except Exception:
+        print("  IPv6 did not work, using IPv4 only")
+    try:
+        return ThreadingHTTPServer(("0.0.0.0", PORT), MyHandler)
+    except Exception:
+        return None
+
+
+def make_local_server():
+    try:
+        return ThreadingHTTPServer(("127.0.0.1", PORT), MyHandler)
+    except Exception:
+        return None
 
 
 def check_connection():
@@ -187,98 +184,50 @@ def check_connection():
     try:
         text = get_cached(ITUNES_URL + "/search?term=daft%20punk&media=music&entity=song&limit=5")
         results = json.loads(text).get("results", [])
-        with_preview = sum(1 for r in results if r.get("previewUrl"))
-        print("    Apple iTunes: connected, " + str(len(results)) + " songs, " + str(with_preview) + " with previews")
+        print("    Apple iTunes: connected, " + str(len(results)) + " songs")
     except Exception as error:
         print("    Apple iTunes: PROBLEM - " + str(error))
-        print("    Check your internet connection, firewall, or VPN.")
     try:
         text = get_cached(RSS_URL + "/api/v2/us/music/most-played/5/songs.json")
-        n = len(json.loads(text).get("feed", {}).get("results", []))
-        print("    Apple charts: connected, " + str(n) + " chart songs")
+        feed = json.loads(text).get("feed", {})
+        print("    Apple charts: connected, " + str(len(feed.get("results", []))) + " songs")
     except Exception as error:
         print("    Apple charts: PROBLEM - " + str(error))
-        print("    (The home page will fall back to search results.)")
     print("")
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Spotify clone powered by the free Apple iTunes Search API."
-    )
-    parser.add_argument(
-        "--port", type=int, default=0,
-        help="use this port instead of trying 80 and then 8080",
-    )
-    parser.add_argument(
-        "--no-hosts", action="store_true",
-        help="do not edit the hosts file (use http://localhost instead of spotify.local)",
-    )
-    parser.add_argument(
-        "--no-browser", action="store_true",
-        help="do not open the browser automatically",
-    )
-    parser.add_argument(
-        "--verbose", action="store_true",
-        help="print every request the server receives",
-    )
-    args = parser.parse_args()
-    args.ports = (args.port,) if args.port else None
-    return args
 
 
 def main():
-    global VERBOSE
-    args = parse_args()
-    VERBOSE = args.verbose
-
-    print("")
-    print("  ==============================")
-    print("    SPOTIFY CLONE  (iTunes)")
-    print("  ==============================")
-    print("")
-
-    name_works = False if args.no_hosts else setup_hosts_file()
-
-    server, port = make_server(args.ports)
-    if server is None:
-        print("  Could not start. Ports 80 and 8080 are both busy.")
-        print("  Close other programs and try again.")
-        return
-
-    if name_works:
-        address = "http://" + SITE_NAME + ("" if port == 80 else ":" + str(port))
+    public = "--server" in sys.argv
+    if public:
+        server = make_public_server()
     else:
-        address = "http://localhost:" + str(port)
-        if not args.no_hosts:
-            print("  Note: could not edit the hosts file, so " + SITE_NAME)
-            print("  will not work. Run again as Administrator / with sudo")
-            print("  to get the nice name. Using localhost for now.")
-            print("")
-
-    print("  Open this in your browser:")
+        server = make_local_server()
+    if server is None:
+        print("  Port " + str(PORT) + " is busy. Stop the other copy and try again.")
+        return
     print("")
-    print("      " + address)
-    print("")
+    print("  MUSIC PLAYER")
+    print("  Listening on port " + str(PORT))
+    if public:
+        print("  Server mode: open your public address")
+    else:
+        print("  Open http://localhost:" + str(PORT))
     print("  Press Ctrl + C to stop.")
     print("")
-
-    if not args.no_browser:
-        threading.Timer(0.5, webbrowser.open, [address]).start()
-
+    if not public:
+        threading.Timer(0.5, webbrowser.open, ["http://localhost:" + str(PORT)]).start()
     checker = threading.Thread(target=check_connection)
     checker.daemon = True
     checker.start()
-
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("")
         print("  Goodbye!")
         server.server_close()
 
 
 FAVICON = r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#1ed760"/><path d="M18 7v11.2a3.6 3.6 0 1 0 2 3.2V11h4V7z" fill="#000"/></svg>"""
+
 
 PAGE_CSS = r"""
 :root {
@@ -2247,13 +2196,15 @@ kbd {
   }
 }
 """
+
+
 PAGE_HTML = r"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Spotify Clone - Web Player</title>
+  <title>Music - Web Player</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -2335,12 +2286,13 @@ PAGE_HTML = r"""
 </body>
 </html>
 """
+
+
 PAGE_JS = r"""
 "use strict";
 
 const $ = (sel, parent) => (parent || document).querySelector(sel);
 const $$ = (sel, parent) => Array.from((parent || document).querySelectorAll(sel));
-// The store country is changeable in Settings, so these are "let" not "const".
 let COUNTRY = (function () {
   try {
     const saved = localStorage.getItem("sp_country");
@@ -2464,7 +2416,6 @@ state.liked.forEach(t => { trackStore[t.id] = t; });
 state.recent.forEach(t => { trackStore[t.id] = t; });
 state.playlists.forEach(p => p.tracks.forEach(t => { trackStore[t.id] = t; }));
 
-/* ---------------- talking to Apple (through our python server) ---------------- */
 
 async function getJson(url) {
   const res = await fetch(url);
@@ -2537,7 +2488,6 @@ function mapArtist(r) {
   return { id: r.artistId, name: r.artistName, genre: r.primaryGenreName || "", cover: "" };
 }
 
-/* ---------------- toast, likes, playlists ---------------- */
 
 let toastTimer = null;
 function toast(message) {
@@ -2612,6 +2562,7 @@ function addRecent(track) {
   saveData("recent", state.recent);
   saveData("last", track);
 }
+
 
 function artistLink(t) {
   if (!t.artistId) return esc(t.artist);
@@ -2751,7 +2702,6 @@ function refreshHearts() {
 }
 
 
-
 function closeMenu() { $("#menu").style.display = "none"; }
 function openMenu(x, y, items) {
   const menu = $("#menu");
@@ -2822,7 +2772,6 @@ function showPickPlaylist(track) {
   showModal(h);
   pendingTrack = track;
 }
-
 
 
 function greeting() {
@@ -2907,7 +2856,6 @@ async function viewSearch(query) {
   ]);
   const tracks = mapTracks(results[0]);
   const artists = results[2].filter(r => r.artistId).map(mapArtist);
-  // iTunes has no artist photos, so borrow the cover of that artist's first song
   artists.forEach(a => {
     const hit = tracks.find(x => x.artistId === a.id);
     if (hit) a.cover = hit.cover;
@@ -3155,7 +3103,6 @@ function updateTopbar() {
 }
 
 
-
 const audio = $("#audio");
 function currentTrack() { return state.queue[state.index] || null; }
 
@@ -3378,7 +3325,6 @@ function toggleMute() {
   audio.muted = state.muted;
   updateVolumeIcon();
 }
-
 
 
 function handleAction(el) {
@@ -3604,6 +3550,7 @@ function setCountry(code) {
   router();
 }
 
+
 function openSettings() {
   let options = "";
   COUNTRIES.forEach(c => {
@@ -3641,10 +3588,9 @@ function openSettings() {
 }
 
 
-
 function exportLibrary() {
   const data = {
-    app: "spotify-clone",
+    app: "music-player",
     version: 1,
     exportedAt: new Date().toISOString(),
     liked: state.liked,
@@ -3655,7 +3601,7 @@ function exportLibrary() {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = "spotify-clone-library.json";
+  link.download = "music-library.json";
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -3730,6 +3676,7 @@ function clearAllData() {
   router();
 }
 
+
 const sleep = { timer: null, endsAt: 0, endOfTrack: false };
 
 function sleepActive() {
@@ -3797,6 +3744,7 @@ function openSleepModal() {
   showModal(h);
 }
 
+
 function showShortcuts() {
   const rows = [
     ["Space", "Play or pause"],
@@ -3837,7 +3785,6 @@ document.addEventListener("keydown", event => {
   else if (event.key === "q") $("#btn-queue").click();
   else if (event.key === "l") toggleLike(currentTrack());
 });
-
 
 
 function openProfileMenu(el) {
@@ -3919,7 +3866,6 @@ function showSongInfo(track) {
 }
 
 
-
 async function loadMadeForYou(token) {
   const pool = state.liked.concat(state.recent);
   if (!pool.length) return;
@@ -3954,6 +3900,7 @@ async function loadMadeForYou(token) {
   holder.innerHTML = h;
   footer.parentNode.insertBefore(holder, footer);
 }
+
 
 async function viewLibrary() {
   let h = '<div class="page-title">Your Library</div>';
@@ -4036,9 +3983,6 @@ async function viewStats() {
   return { html: h + footerNote(), tracks: state.recent.slice(0, 10), color: "#1e3264" };
 }
 
-/* ---------------------------------------------------------------------
-   Action handler for everything above
-   --------------------------------------------------------------------- */
 
 function handleExtraAction(act, el) {
   switch (act) {
@@ -4086,10 +4030,10 @@ function handleExtraAction(act, el) {
   }
 }
 
+
 window.addEventListener("offline", () => toast("You are offline"));
 window.addEventListener("online", () => toast("Back online"));
 
-// Show the song you were last playing (paused) when you reopen the page.
 function restoreLastTrack() {
   const last = loadData("last", null);
   if (!last || !last.preview || currentTrack()) return;
