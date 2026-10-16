@@ -7,7 +7,7 @@ A Spotify-style music web player in **one Python file**. It uses Apple's free
 
 > This is a learning project. It is not affiliated with Spotify, Apple or any
 > music service. Songs play as **free 30-second previews**.
-
+> You can test it live by spotify.paio.hackclub.app
 ---
 
 ## Quick start
