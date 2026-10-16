@@ -1,5 +1,6 @@
 # Spotify Clone (free, no API key)
-![Uploading image.png…]()
+<img width="1200" height="604" alt="image" src="https://github.com/user-attachments/assets/f6e0bec6-7aff-4191-b658-06608be93bb3" />
+
 
 A Spotify-style music web player in **one Python file**. It uses Apple's free
 **iTunes Search API**, so there is no account, no API key and no sign-up.
