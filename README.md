@@ -1,104 +1,56 @@
-# Spotify Clone (free, no API key)
-<img width="1200" height="604" alt="image" src="https://github.com/user-attachments/assets/f6e0bec6-7aff-4191-b658-06608be93bb3" />
+# Spotify Clone
 
+<img width="1200" height="604" alt="screenshot" src="https://github.com/user-attachments/assets/f6e0bec6-7aff-4191-b658-06608be93bb3" />
 
-A Spotify-style music web player in **one Python file**. It uses Apple's free
-**iTunes Search API**, so there is no account, no API key and no sign-up.
+A Spotify-style music player that runs from a single Python file. It pulls songs from Apple's iTunes Search API, which is free and needs no key, so you can just run it.
 
-> You can test it live by spotify.paio.hackclub.app
----
+Live demo: https://spotify.paio.hackclub.app
 
-## Quick start
+## Running it
 
-1. Install **Python 3.7 or newer** (no extra packages are needed).
-2. Put `spotify_clone.py` anywhere you like.
-3. Run it:
+You need Python 3.7+ and nothing else (no pip installs).
 
-   ```bash
-   python spotify_clone.py
-   ```
+```bash
+python spotify_clone.py
+```
 
-   On Mac/Linux you may need `python3 spotify_clone.py`.
-4. Your browser opens by itself. If not, open the address printed in the
-   terminal (for example `http://spotify.local` or `http://localhost:8080`).
-5. Press `Ctrl + C` in the terminal to stop it.
+On Mac/Linux it might be `python3`. Your browser should open on its own. If it doesn't, use the address the terminal prints (`http://spotify.local` or `http://localhost:8080`). Ctrl+C stops it.
 
-When it starts, the terminal runs a quick connection check and prints
-`Apple iTunes: connected, N songs` if everything works.
+On startup it checks the connection to Apple and prints `Apple iTunes: connected, N songs` if it works.
 
+## What it does
 
-## Features
+- Home page with trending songs and a few shelves (albums, Bollywood, hip-hop)
+- Search for songs, albums and artists, with filters
+- Genre tiles (Pop, Punjabi, Tamil, Telugu, K-Pop and more), plus album and artist pages
+- Normal player stuff: play/pause, next/previous, seek, volume, shuffle, repeat, queue
+- Sleep timer and media key support
+- Liked songs, playlists you can reorder, and following artists, all saved in your browser
+- Stats page, and export/import of your library as JSON
+- Settings (top right profile icon): store country, hide explicit songs, clear data
 
-**Browsing**
-- Home page with trending songs, popular albums, Bollywood and hip-hop shelves
-- Search for songs, albums and artists, with All / Songs / Artists / Albums filters
-- Top result card, plus Browse tiles for 20 genres (Pop, Bollywood, Punjabi, Tamil, Telugu, K-Pop...)
-- Album, artist and genre pages
-- Recent searches remembered on the Browse page
-- "More from ..." shelves on Home, based on the artists you like and play most
+## When something breaks
 
-**Player**
-- Play, pause, next, previous, seek bar, volume, mute
-- Shuffle and repeat (off / all / one)
-- Queue panel, "Play next", click a queue item to jump to it
-- Sleep timer (5 to 60 minutes, or end of the current song)
-- Media keys and the browser media controls work
-- The last song you played shows up (paused) when you reopen the page
+**Terminal says `Apple iTunes: PROBLEM`**: your network is probably blocking Apple. Try turning off your VPN or using a hotspot. The actual error is printed above it.
 
-**Your library (saved in your browser)**
-- Liked Songs
-- Create, rename, delete playlists; re-order songs inside a playlist
-- Follow artists
-- Library page and Stats page (top artists, counts, recently played)
-- Export and import your library as a JSON file
+**Home says "Could not load music from Apple"**: same thing. Run with `--verbose` to see more.
 
-**Settings** (click the round profile icon, top right)
-- Store country (changes charts and results; 15 countries)
-- Hide explicit songs
-- Sleep timer, keyboard shortcuts, clear all data
+**Charts are empty but search works**: Apple's chart feed is separate from search. It falls back to searching "top hits". Changing the store country in Settings can help.
 
+**"Could not edit the hosts file"**: this only affects the `spotify.local` name. It will use `localhost:PORT` instead. Use `--no-hosts` to skip it, or run with admin/sudo if you want `spotify.local`.
 
-## Troubleshooting
+**"Ports 80 and 8080 are both busy"**: close whatever is using them or pass `--port 9000`.
 
-**The terminal says `Apple iTunes: PROBLEM`**
-Your network is blocking Apple. Check your firewall, VPN or proxy, or try a
-phone hotspot. The exact error is printed in the terminal.
+**"No preview available"**: Apple doesn't give a preview for every track. Skip it.
 
-**Home says "Could not load music from Apple"**
-Same cause as above. Run with `--verbose` to see what is failing.
+**Results suddenly stop**: Apple limits searches to roughly 20 a minute. Wait a bit. Results are cached for 5 minutes.
 
-**Charts are empty but search works**
-Apple's chart feed is separate from search. The app falls back to a search for
-"top hits" automatically. Try a different store country in Settings.
+**Nothing plays**: browsers block autoplay, so click a play button once. Also check the tab isn't muted.
 
-**"Could not edit the hosts file"**
-That only affects the nice `spotify.local` name. The app falls back to
-`http://localhost:PORT`. Use `--no-hosts` to skip it on purpose. Run as
-Administrator (Windows) or with `sudo` (Mac/Linux) if you want `spotify.local`.
+## AI usage
 
-**"Ports 80 and 8080 are both busy"**
-Close the other program or choose a port: `--port 9000`.
-
-**A song is greyed out or says "No preview available"**
-Apple does not provide a preview for every track. Skip to another one.
-
-**Too many requests / results suddenly stop**
-Apple limits how often one connection can search (roughly 20 per minute).
-Wait a minute and try again. Results are cached for 5 minutes to help.
-
-**Nothing plays**
-Browsers block autoplay until you click something. Click a play button once.
-Also check the volume bar and that the tab is not muted.
-
----
-
-# AI Usage
-
-## Ai has helped me in making the Ui as close as possible to the real spotify and also made the code for the API calls for apple itunes.
-
----
+I used AI to help get the UI close to the real Spotify and to write the iTunes API calls. 
 
 ## Credits
 
-Music data and previews: Apple iTunes Search API and Apple's public chart feed.
-Look and feel inspired by Spotify's web player. Not affiliated with either.
+Music data and previews come from Apple's iTunes Search API and public chart feed. The design is inspired by Spotify's web player. I'm not affiliated with either.
