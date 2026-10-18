@@ -94,7 +94,7 @@ Also check the volume bar and that the tab is not muted.
 
 # AI Usage
 
-Ai has helped me in making the Ui as close as possible to the real spotify and also made the code for the API calls for apple itunes.
+## Ai has helped me in making the Ui as close as possible to the real spotify and also made the code for the API calls for apple itunes.
 
 ---
 
